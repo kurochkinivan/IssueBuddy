@@ -15,12 +15,12 @@ func checkResponseStatus(resp *http.Response, validStatusCode int) error {
 	if resp.StatusCode != validStatusCode {
 		data, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return fmt.Errorf("failed to read data from response body, err: %v", err)
+			return fmt.Errorf("failed to read data from the response body, err: %v", err)
 		}
 
 		var buf bytes.Buffer
 		json.Indent(&buf, data, "", " ")
-		return fmt.Errorf("something went wrong, json response: %v", buf.String())
+		return fmt.Errorf("json response: %v", buf.String())
 	}
 
 	return nil
