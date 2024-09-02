@@ -10,6 +10,9 @@ type Issue struct {
 	User      *User
 	CreatedAt time.Time `json:"created_at"`
 	Body      string
+	Milestone int      `json:"milestone"`
+	Labels    []string `json:"labels"`
+	Assignees []string `json:"assignees"`
 }
 
 type CreateUpdateIssue struct {

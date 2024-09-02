@@ -2,9 +2,9 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"strings"
 
+	cuserr "github.com/kurochkinivan/IssueBuddy/internal/custome_erros"
 	"github.com/kurochkinivan/IssueBuddy/internal/editors"
 	issueBuddy "github.com/kurochkinivan/IssueBuddy/internal/issue_client"
 	"github.com/kurochkinivan/IssueBuddy/internal/parsers"
@@ -16,17 +16,16 @@ var (
 	owner string
 	repo  string
 
-	state       = "close"
-	stateReason = "i don't care"
-	lockReason  = "off-topic"
-
 	filename = "input.txt"
 )
 
-// TODO: think about log.Fatal
-
 func main() {
-	clearAll()
+	fmt.Println("Enter your github token:")
+	fmt.Scan(&token)
+	fmt.Println("Enter the repo owner:")
+	fmt.Scan(&owner)
+	fmt.Println("Enter the repo name:")
+	fmt.Scan(&repo)
 
 	mainMenu()
 }
@@ -58,7 +57,8 @@ func mainMenu() {
 			isEmpty()
 			issues, err := issueBuddy.GetIssues(token, owner, repo)
 			if err != nil {
-				log.Fatalf("failed to get all issues, err: %v\n", err)
+				fmt.Printf("failed to get all issues, err: %v\n", err)
+				refreshLoop()
 			}
 
 			for _, issue := range issues {
@@ -67,7 +67,7 @@ func mainMenu() {
 			}
 		case "5":
 			if empty := isEmpty(); empty {
-				fmt.Println("cannot make a request: fields token, repo owner and repo name should not be empty;")
+				fmt.Println(cuserr.CantMakeRequest + cuserr.EmptyError)
 				refreshLoop()
 			}
 
@@ -77,71 +77,18 @@ func mainMenu() {
 
 			issue, err := issueBuddy.GetIssue(token, owner, repo, issueNumber)
 			if err != nil {
-				log.Fatalf("failed to get the issue by number, err: %v\n", err)
-			}
-			fmt.Printf("%v\n", issue)
-		case "6":
-			if empty := isEmpty(); empty {
-				fmt.Println("cannot make a request: fields token, repo owner and repo name should not be empty;")
+				fmt.Printf("failed to get the issue by number, err: %v\n", err)
 				refreshLoop()
 			}
 
-			fmt.Println("Enter the title (one line):")
-			title := readers.ReadOneLine()
-
-			fmt.Println("Enter the body (you can use texteditor (type ed) or continue using command line (type cl)'):")
-
-			var body string
-			for {
-				var choice string
-				fmt.Scan(&choice)
-				if choice == "ed" {
-
-					fmt.Println("choose editor: (Press enter if you want default)")
-					var editor string
-					fmt.Scanln(&editor)
-
-					if editor == "" {
-						editor = editors.DefaultEditor()
-					}
-
-					cmd := editors.OpenEditor(editor, filename)
-					err := cmd.Start()
-					if err != nil {
-						fmt.Printf("failed to open editor, err: %v", err)
-						continue
-					}
-
-					err = cmd.Wait()
-					if err != nil {
-						fmt.Printf("failed to wait for editor, err: %v", err)
-						continue
-					}
-
-					body, err = readers.ReadFile(filename)
-					if err != nil {
-						fmt.Printf("failed to read file, err: %v", err)
-						continue
-					}
-
-					break
-				} else if choice == "cl" {
-					body = readers.ReadOneLine()
-					break
-				} else {
-					fmt.Println("invalid input, type 'cl' or 'ed'")
-				}
+			printIssue(issue)
+		case "6":
+			if empty := isEmpty(); empty {
+				fmt.Println(cuserr.CantMakeRequest + cuserr.EmptyError)
+				refreshLoop()
 			}
 
-			fmt.Println("Enter the milestone (Press enter if you don't need it):")
-			var milestone int
-			fmt.Scanln(&milestone)
-
-			fmt.Println("Enter the labels separated labels by comma ',' (Press enter if you don't need it):")
-			labels := parsers.ParseLine(readers.ReadOneLine())
-
-			fmt.Println("Enter the assignees separated by comma ',' (Press enter if you don't need it):")
-			assignees := parsers.ParseLine(readers.ReadOneLine())
+			title, body, milestone, labels, assignees := createUpdateDialog()
 
 			createIssue := issueBuddy.CreateUpdateIssue{
 				Title:     title,
@@ -151,30 +98,238 @@ func mainMenu() {
 				Assignees: assignees,
 			}
 
-			fmt.Printf("Title: %s\nMilestone: %d\nLabels: %v\nAssignees: %v\nBody: %s\n",
-				createIssue.Title, createIssue.Milestone, createIssue.Labels, createIssue.Assignees, createIssue.Body)
+			fmt.Println("----------------------------------------------------")
+			fmt.Printf("\nTitle: %s\nBody: %s\nMilestone: %d\nLabels: %v\nAssignees: %v\n",
+				createIssue.Title, createIssue.Body, createIssue.Milestone, createIssue.Labels, createIssue.Assignees)
+			fmt.Println("----------------------------------------------------")
+
 			fmt.Println("Do you confirm creating issue?(y/n)")
 
 			if confirmed := confirmDialog(); confirmed {
 				_, err := issueBuddy.CreateIssue(token, owner, repo, createIssue)
 				if err != nil {
-					log.Fatalf("failed to create the issue, err: %v\n", err)
+					fmt.Printf("failed to create the issue, err: %v\n", err)
+					refreshLoop()
 				}
-				break
 			} else {
 				mainMenu()
 			}
 
-			fmt.Println("New Issue was successfully created! (press 0 to refresh menu)")
+			fmt.Println("New Issue was successfully created!")
+		case "7":
+			if empty := isEmpty(); empty {
+				fmt.Println(cuserr.CantMakeRequest + cuserr.EmptyError)
+				refreshLoop()
+			}
+
+			var issueNumber int
+			fmt.Println("Enter issue number:")
+			fmt.Scan(&issueNumber)
+
+			oldIssue, err := issueBuddy.GetIssue(token, owner, repo, issueNumber)
+			if err != nil {
+				fmt.Printf("failed to get the issue by number, err: %v\n", err)
+				refreshLoop()
+			}
+			printIssue(oldIssue)
+
+			title, body, milestone, labels, assignees := createUpdateDialog()
+
+			fmt.Println("Enter the state(close/open)", cuserr.SkipFieldInstruction)
+			var state string
+			for {
+				fmt.Scanln(&state)
+				if state == "close" || state == "open" || state == "" {
+					break
+				} else {
+					fmt.Println(cuserr.InvalidInput)
+				}
+			}
+
+			fmt.Println("Enter the state reason", cuserr.SkipFieldInstruction)
+			stateReason, err := readers.ReadOneLine()
+			if err != nil {
+				fmt.Println(err)
+			}
+
+			updateIssue := issueBuddy.CreateUpdateIssue{
+				Title:       title,
+				Body:        body,
+				Milestone:   milestone,
+				Labels:      labels,
+				Assignees:   assignees,
+				State:       state,
+				StateReason: stateReason,
+			}
+
+			fmt.Println("----------------------------------------------------")
+			fmt.Println("Old Issue:")
+			fmt.Printf("\nTitle: %s\nBody: %s\nMilestone: %d\nLabels: %v\nAssignees: %v\nState: %s\n",
+				oldIssue.Title, oldIssue.Body, oldIssue.Milestone, oldIssue.Labels, oldIssue.Assignees, oldIssue.State)
+			fmt.Println("----------------------------------------------------")
+			fmt.Println("----------------------------------------------------")
+			fmt.Printf("\nTitle: %s\nBody: %s\nMilestone: %d\nLabels: %v\nAssignees: %v\nState: %s\nState reason: %s\n",
+			updateIssue.Title, updateIssue.Body, updateIssue.Milestone, updateIssue.Labels, updateIssue.Assignees, updateIssue.State, updateIssue.StateReason)
+			fmt.Println("----------------------------------------------------")
+
+			fmt.Println("Do you confirm updating issue?(y/n)")
+
+			if confirmed := confirmDialog(); confirmed {
+				_, err := issueBuddy.UpdateIssue(token, owner, repo, issueNumber, updateIssue)
+				if err != nil {
+					fmt.Printf("failed to update the issue, err: %v\n", err)
+					refreshLoop()
+				}
+			} else {
+				mainMenu()
+			}
+
+			fmt.Println("Issue was successfully updated!")
+		case "8":
+			if empty := isEmpty(); empty {
+				fmt.Println(cuserr.CantMakeRequest + cuserr.EmptyError)
+				refreshLoop()
+			}
+
+			fmt.Println("Enter issue number:")
+			var issueNumber int
+			fmt.Scan(&issueNumber)
+
+			fmt.Println("Enter lock reason(off-topic/too heated/resolved/spam):")
+			var lockReason string
+			for {
+				lockReason, _ = readers.ReadOneLine()
+				if lockReason == "off-topic" || lockReason == "too heated" || lockReason == "resolved" || lockReason == "spam" {
+					break
+				} else {
+					fmt.Println(cuserr.InvalidInput)
+				}
+			}
+
+			lockIssue := issueBuddy.CreateUpdateIssue{
+				LockReason: lockReason,
+			}
+			err := issueBuddy.LockIssue(token, owner, repo, issueNumber, lockIssue)
+			if err != nil {
+				fmt.Printf("failed to lock the issue, err: %v\n", err)
+				refreshLoop()
+			}
+
+			fmt.Println("Issue was successfully locked!")
+		case "9":
+			if empty := isEmpty(); empty {
+				fmt.Println(cuserr.CantMakeRequest + cuserr.EmptyError)
+				refreshLoop()
+			}
+
+			fmt.Println("Enter issue number:")
+			var issueNumber int
+			fmt.Scan(&issueNumber)
+
+			err := issueBuddy.UnlockIssue(token, owner, repo, issueNumber)
+			if err != nil {
+				fmt.Printf("failed to unlock the issue, err: %v\n", err)
+			}
+
+			fmt.Println("Issue was successfully unlocked!")
 		case "0":
 			mainMenu()
+		default:
+			fmt.Println(cuserr.InvalidInput)
+			continue
 		}
+		refreshLoop()
 	}
 
 }
 
+func printIssue(issue issueBuddy.Issue) {
+	fmt.Println("----------------------------------------------------")
+	fmt.Printf("№%d\nCreated at: %v\nState: %q\nUser: %s\nUser_url: %s\nTitle: %s\nBody: %s\n",
+		issue.Number, issue.CreatedAt.Format("2006-01-02 15:04:05"), issue.State, issue.User.Login, issue.User.HTMLURL, issue.Title, issue.Body)
+	fmt.Println("----------------------------------------------------")
+}
+
+func createUpdateDialog() (title string, body string, milestone int, labels []string, assignees []string) {
+	fmt.Println("Enter the title (one line)", cuserr.SkipFieldInstruction)
+	title, err := readers.ReadOneLine()
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	fmt.Println("Enter the body (using texteditor(type ed)/using command line(type cl))", cuserr.SkipFieldInstruction)
+
+	for {
+		var choice string
+		fmt.Scanln(&choice)
+		if choice == "ed" {
+
+			fmt.Println("choose editor: (Press enter if you want default)")
+			var editor string
+			fmt.Scanln(&editor)
+
+			if editor == "" {
+				editor = editors.DefaultEditor()
+			}
+
+			cmd := editors.OpenEditor(editor, filename)
+			err := cmd.Start()
+			if err != nil {
+				fmt.Printf("failed to open editor, err: %v", err)
+				continue
+			}
+
+			err = cmd.Wait()
+			if err != nil {
+				fmt.Printf("failed to wait for editor, err: %v", err)
+				continue
+			}
+
+			body, err = readers.ReadFile(filename)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+
+			break
+		} else if choice == "cl" {
+			line, err := readers.ReadOneLine()
+			if err != nil {
+				fmt.Println(err)
+				fmt.Println("Enter the body (using texteditor(type ed)/using command line(type cl))")
+				continue
+			}
+			body = strings.TrimSpace(line)
+			break
+		} else if choice == "" {
+			body = ""
+			continue
+		} else {
+			fmt.Println("invalid input, type 'cl' or 'ed'")
+		}
+	}
+
+	fmt.Println("Enter the milestone", cuserr.SkipFieldInstruction)
+	fmt.Scanln(&milestone)
+
+	fmt.Println("Enter the labels separated by comma ','", cuserr.SkipFieldInstruction)
+	line, err := readers.ReadOneLine()
+	if err != nil {
+		fmt.Println(err)
+	}
+	labels = parsers.ParseLine(line)
+
+	fmt.Println("Enter the assignees separated by comma ','", cuserr.SkipFieldInstruction)
+	line, err = readers.ReadOneLine()
+	if err != nil {
+		fmt.Println(err)
+	}
+	assignees = parsers.ParseLine(line)
+
+	return title, body, milestone, labels, assignees
+}
+
 func confirmDialog() bool {
-	fmt.Println("Do you confirm creating issue?(y/n)")
 	for {
 		var yesNo string
 		fmt.Scan(&yesNo)
@@ -209,66 +364,4 @@ func refreshLoop() {
 
 func clearAll() {
 	fmt.Print("\033[H\033[2J")
-}
-
-func test() {
-	// // Get many
-	// issues, err := issueBuddy.GetIssues(token, owner, repo)
-	// if err != nil {
-	// 	log.Fatalf("failed to get all issues, err: %v\n", err)
-	// }
-	// fmt.Printf("%v\n", issues)
-
-	// // Get one
-	// issue, err := issueBuddy.GetIssue(token, owner, repo, issueNumber)
-	// if err != nil {
-	// 	log.Fatalf("failed to get the issue by number, err: %v\n", err)
-	// }
-	// fmt.Printf("%v\n", issue)
-
-	// // Create
-	// createIssue := issueBuddy.CreateUpdateIssue{
-	// 	Title:     title,
-	// 	Body:      body,
-	// 	Milestone: milestone,
-	// 	Labels:    labels,
-	// 	Assignees: assignees,
-	// }
-	// newIssue, err := issueBuddy.CreateIssue(token, owner, repo, createIssue)
-	// if err != nil {
-	// 	log.Fatalf("failed to create the issue, err: %v\n", err)
-	// }
-	// fmt.Printf("%v\n", newIssue)
-
-	// // Update
-	// updateIssue := issueBuddy.CreateUpdateIssue{
-	// 	Title:       title,
-	// 	Body:        body,
-	// 	Milestone:   milestone,
-	// 	Labels:      labels,
-	// 	Assignees:   assignees,
-	// 	State:       state,
-	// 	StateReason: stateReason,
-	// }
-	// newIssue, err = issueBuddy.UpdateIssue(token, owner, repo, issueNumber, updateIssue)
-	// if err != nil {
-	// 	log.Fatalf("failed to update the issue, err: %v\n", err)
-	// }
-	// fmt.Printf("%v\n", newIssue)
-
-	// // Lock
-	// lockIssue := issueBuddy.CreateUpdateIssue{
-	// 	LockReason: lockReason,
-	// }
-	// err = issueBuddy.LockIssue(token, owner, repo, issueNumber, lockIssue)
-	// if err != nil {
-	// 	log.Fatalf("failed to lock the issue, err: %v\n", err)
-	// }
-
-	// // Unlock
-	// err = issueBuddy.UnlockIssue(token, owner, repo, issueNumber)
-	// if err != nil {
-	// 	log.Fatalf("failed to unlock the issue, err: %v\n", err)
-	// }
-	fmt.Println("")
 }
