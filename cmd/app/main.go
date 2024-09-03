@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"strings"
 
@@ -20,12 +21,23 @@ var (
 )
 
 func main() {
-	fmt.Println("Enter your github token:")
-	fmt.Scan(&token)
-	fmt.Println("Enter the repo owner:")
-	fmt.Scan(&owner)
-	fmt.Println("Enter the repo name:")
-	fmt.Scan(&repo)
+	flag.StringVar(&token, "token", "", "Github access token")
+	flag.StringVar(&owner, "owner", "", "Repository owner")
+	flag.StringVar(&repo, "repo", "", "Repository name")
+	flag.Parse()
+
+	if token == "" {
+		fmt.Println("Enter your github access token:")
+		fmt.Scan(&token)
+	}
+	if owner == "" {
+		fmt.Println("Enter the repo owner:")
+		fmt.Scan(&owner)
+	}
+	if repo == "" {
+		fmt.Println("Enter the repo name:")
+		fmt.Scan(&repo)
+	}
 
 	mainMenu()
 }
@@ -169,7 +181,7 @@ func mainMenu() {
 			fmt.Println("----------------------------------------------------")
 			fmt.Println("----------------------------------------------------")
 			fmt.Printf("\nTitle: %s\nBody: %s\nMilestone: %d\nLabels: %v\nAssignees: %v\nState: %s\nState reason: %s\n",
-			updateIssue.Title, updateIssue.Body, updateIssue.Milestone, updateIssue.Labels, updateIssue.Assignees, updateIssue.State, updateIssue.StateReason)
+				updateIssue.Title, updateIssue.Body, updateIssue.Milestone, updateIssue.Labels, updateIssue.Assignees, updateIssue.State, updateIssue.StateReason)
 			fmt.Println("----------------------------------------------------")
 
 			fmt.Println("Do you confirm updating issue?(y/n)")
@@ -240,7 +252,6 @@ func mainMenu() {
 		}
 		refreshLoop()
 	}
-
 }
 
 func printIssue(issue issueBuddy.Issue) {
