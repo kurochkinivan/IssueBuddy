@@ -3,6 +3,9 @@ package main
 import (
 	"flag"
 	"fmt"
+	"os"
+	"os/exec"
+	"runtime"
 	"strings"
 
 	cuserr "github.com/kurochkinivan/IssueBuddy/internal/custome_erros"
@@ -18,7 +21,29 @@ var (
 	repo  string
 
 	filename = "input.txt"
+
+	clearOS map[string]func()
+	OS      string = runtime.GOOS
 )
+
+func init() {
+	clearOS = make(map[string]func())
+	clearOS["windows"] = func() {
+		cmd := exec.Command("cmd", "/c", "cls")
+		cmd.Stdout = os.Stdout
+		cmd.Run()
+	}
+	clearOS["linux"] = func() {
+		cmd := exec.Command("clear")
+		cmd.Stdout = os.Stdout
+		cmd.Run()
+	}
+	clearOS["darwin"] = func() {
+		cmd := exec.Command("clear")
+		cmd.Stdout = os.Stdout
+		cmd.Run()
+	}
+}
 
 func main() {
 	flag.StringVar(&token, "token", "", "Github access token")
@@ -374,5 +399,10 @@ func refreshLoop() {
 }
 
 func clearAll() {
-	fmt.Print("\033[H\033[2J")
+	value, ok := clearOS[OS]
+	if ok {
+		value()
+	} else {
+		fmt.Println("cannot clear the terminal, unknown operation system")
+	}
 }
